@@ -34,11 +34,17 @@ This enhanced build system creates tablet-optimized ChromeOS images with advance
 # Make the script executable
 chmod +x tablet-build.sh
 
-# Build with default settings (Samus + all modules)
-./tablet-build.sh
+# Quick Rammus build with preset (recommended)
+./build-rammus-tablet.sh
 
-# Build with specific modules
-./tablet-build.sh --codename samus --tablet-mode --modules android-apps,tablet-ui,stylus-support
+# Build with Rammus preset
+./tablet-build.sh --preset rammus
+
+# Build with Samus preset
+./tablet-build.sh --preset samus
+
+# Build with custom recovery image
+./tablet-build.sh --recovery-url "https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16433.41.0_rammus_recovery_stable-channel_RammusMPKeys-v8.bin.zip" --modules all
 ```
 
 ### Advanced Usage
@@ -63,7 +69,44 @@ chmod +x tablet-build.sh
 | `--gestures` | `-g` | Enable advanced gesture support | `true` |
 | `--modules` | `-m` | Comma-separated list of modules | `""` |
 | `--output` | `-o` | Output image filename | `chromeos-tablet-{codename}-{date}.img` |
+| `--recovery-url` | - | Custom recovery image URL | Auto-detect |
+| `--recovery-file` | - | Local recovery image file | Auto-detect |
+| `--preset` | - | Use preset configuration | None |
 | `--help` | `-h` | Show help message | - |
+
+## 🎯 Preset Configurations
+
+The build system includes preset configurations for different hardware platforms:
+
+### Rammus Preset (`--preset rammus`)
+- **Hardware**: Intel 8th Generation processors (Kaby Lake Refresh)
+- **Graphics**: Intel UHD Graphics 615 with Vulkan support
+- **Audio**: Realtek ALC5682 with noise cancellation
+- **WiFi**: Intel AC 9560 with 802.11ac support
+- **Recovery**: Preset ChromeOS 16433.41.0 recovery image
+- **Optimizations**: Intel 8th Gen specific performance tuning
+- **Features**: All tablet modules enabled by default
+
+### Samus Preset (`--preset samus`)
+- **Hardware**: Intel 3rd Generation processors and older
+- **Graphics**: Intel i915 with legacy support
+- **Audio**: Realtek codec optimizations
+- **WiFi**: Intel wireless driver tuning
+- **Recovery**: Auto-detected from cros.tech
+- **Optimizations**: Legacy hardware compatibility
+- **Features**: Basic tablet modules enabled
+
+### Custom Recovery Images
+
+You can use any ChromeOS recovery image with the build system:
+
+```bash
+# Using a custom recovery URL
+./tablet-build.sh --recovery-url "https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16433.41.0_rammus_recovery_stable-channel_RammusMPKeys-v8.bin.zip"
+
+# Using a local recovery file
+./tablet-build.sh --recovery-file "/path/to/recovery.bin.zip"
+```
 
 ## 🧩 Available Modules
 
@@ -302,4 +345,3 @@ This project is licensed under the same terms as the original ChromeOS build scr
 **🎉 Enjoy your tablet-optimized ChromeOS with Samus integration!**
 
 For support and questions, please open an issue in the repository.
-

@@ -56,6 +56,9 @@ OPTIONS:
     -g, --gestures              Enable advanced gesture support
     -m, --modules MODULES       Comma-separated list of modules to include
     -o, --output OUTPUT         Output image filename
+    --recovery-url URL          Custom recovery image URL
+    --recovery-file FILE        Local recovery image file
+    --preset PRESET             Use preset configuration (rammus, samus, etc.)
     -h, --help                  Show this help message
 
 AVAILABLE MODULES:
@@ -73,7 +76,14 @@ AVAILABLE MODULES:
 EXAMPLES:
     $0 --codename samus --tablet-mode --modules android-apps,tablet-ui
     $0 -c samus -t -r -g -m all
+    $0 --preset rammus --modules all
+    $0 --recovery-url "https://dl.google.com/.../recovery.bin.zip" --modules all
+    $0 --recovery-file "/path/to/recovery.bin.zip" --codename rammus
     $0 --help
+
+PRESETS:
+    rammus                      Rammus preset with Intel 8th Gen optimizations
+    samus                       Samus preset with Intel 3rd Gen optimizations
 
 EOF
 }
@@ -87,6 +97,9 @@ parse_arguments() {
     TOUCH_OPTIMIZED="$DEFAULT_TOUCH_OPTIMIZED"
     MODULES=""
     OUTPUT_FILENAME=""
+    RECOVERY_URL=""
+    RECOVERY_FILE=""
+    PRESET_CONFIG=""
 
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -114,6 +127,18 @@ parse_arguments() {
                 OUTPUT_FILENAME="$2"
                 shift 2
                 ;;
+            --recovery-url)
+                RECOVERY_URL="$2"
+                shift 2
+                ;;
+            --recovery-file)
+                RECOVERY_FILE="$2"
+                shift 2
+                ;;
+            --preset)
+                PRESET_CONFIG="$2"
+                shift 2
+                ;;
             -h|--help)
                 show_help
                 exit 0
@@ -126,10 +151,70 @@ parse_arguments() {
         esac
     done
 
+    # Load preset configuration if specified
+    if [[ -n "$PRESET_CONFIG" ]]; then
+        load_preset_config "$PRESET_CONFIG"
+    fi
+    
     # Set default output filename if not provided
     if [[ -z "$OUTPUT_FILENAME" ]]; then
         OUTPUT_FILENAME="chromeos-tablet-${CODENAME}-$(date +%Y%m%d).img"
     fi
+}
+
+# Load preset configuration
+load_preset_config() {
+    local preset_name="$1"
+    local preset_file="$CONFIG_DIR/${preset_name}-preset.conf"
+    
+    if [[ ! -f "$preset_file" ]]; then
+        log_error "Preset configuration not found: $preset_file"
+        log_info "Available presets:"
+        ls -1 "$CONFIG_DIR"/*-preset.conf 2>/dev/null | sed 's/.*\///;s/-preset\.conf$//' | sed 's/^/  - /' || log_info "  No presets available"
+        exit 1
+    fi
+    
+    log_info "Loading preset configuration: $preset_name"
+    
+    # Parse the preset configuration file
+    while IFS='=' read -r key value; do
+        # Skip comments and empty lines
+        [[ "$key" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "$key" ]] && continue
+        [[ "$key" =~ ^\[.*\]$ ]] && continue
+        
+        # Remove leading/trailing whitespace
+        key=$(echo "$key" | xargs)
+        value=$(echo "$value" | xargs)
+        
+        case "$key" in
+            "codename")
+                CODENAME="$value"
+                ;;
+            "preset_url")
+                RECOVERY_URL="$value"
+                ;;
+            "default_modules")
+                if [[ -z "$MODULES" ]]; then
+                    MODULES="$value"
+                fi
+                ;;
+            "tablet_mode")
+                TABLET_MODE="$value"
+                ;;
+            "rotation_support")
+                ROTATION_SUPPORT="$value"
+                ;;
+            "gesture_support")
+                GESTURE_SUPPORT="$value"
+                ;;
+            "stylus_support")
+                STYLUS_SUPPORT="$value"
+                ;;
+        esac
+    done < "$preset_file"
+    
+    log_success "Preset configuration loaded: $preset_name"
 }
 
 # Create directory structure
@@ -170,35 +255,82 @@ clean_previous_run() {
     log_success "Previous build artifacts cleaned"
 }
 
-# Download ChromeOS with enhanced error handling
+# Download ChromeOS with enhanced error handling and custom recovery support
 download_chromeos() {
     local code_name=$1
-    log_info "Downloading ChromeOS for $code_name..."
+    log_info "Downloading ChromeOS..."
     
-    local url="https://cros.tech/device/${code_name}"
-    local response=$(curl -s --progress-bar "$url")
-    local link=$(echo "$response" | sed -n 's/.*<a[^>]*href="\([^"]*dl\.google\.com[^"]*\.zip\)"[^>]*>\([^<]*\)<\/a>.*/\1 \2/p' | awk '
-    {
-        if (match($2, /[0-9]+/)) {
-            num = substr($2, RSTART, RLENGTH)
-            if (num > max_num) {
-                max_num = num
-                max_link = $1
+    cd "$BUILD_DIR"
+    
+    # Check if custom recovery URL or file is provided
+    if [[ -n "$RECOVERY_URL" ]]; then
+        log_info "Using custom recovery URL: $RECOVERY_URL"
+        local filename=$(basename "$RECOVERY_URL")
+        aria2c --console-log-level=warn --summary-interval=1 -x 16 -o "$filename" "$RECOVERY_URL"
+        
+        # Extract the recovery image
+        if [[ "$filename" == *.zip ]]; then
+            unzip -o "$filename" -d chromeos
+            rm -f "$filename"
+        elif [[ "$filename" == *.bin ]]; then
+            mkdir -p chromeos
+            mv "$filename" chromeos/
+        else
+            log_error "Unsupported recovery file format: $filename"
+            exit 1
+        fi
+        
+    elif [[ -n "$RECOVERY_FILE" ]]; then
+        log_info "Using local recovery file: $RECOVERY_FILE"
+        
+        if [[ ! -f "$RECOVERY_FILE" ]]; then
+            log_error "Recovery file not found: $RECOVERY_FILE"
+            exit 1
+        fi
+        
+        # Copy and extract the recovery file
+        local filename=$(basename "$RECOVERY_FILE")
+        cp "$RECOVERY_FILE" .
+        
+        if [[ "$filename" == *.zip ]]; then
+            unzip -o "$filename" -d chromeos
+            rm -f "$filename"
+        elif [[ "$filename" == *.bin ]]; then
+            mkdir -p chromeos
+            mv "$filename" chromeos/
+        else
+            log_error "Unsupported recovery file format: $filename"
+            exit 1
+        fi
+        
+    else
+        # Use automatic detection from cros.tech
+        log_info "Auto-detecting ChromeOS recovery for $code_name..."
+        local url="https://cros.tech/device/${code_name}"
+        local response=$(curl -s --progress-bar "$url")
+        local link=$(echo "$response" | sed -n 's/.*<a[^>]*href="\([^"]*dl\.google\.com[^"]*\.zip\)"[^>]*>\([^<]*\)<\/a>.*/\1 \2/p' | awk '
+        {
+            if (match($2, /[0-9]+/)) {
+                num = substr($2, RSTART, RLENGTH)
+                if (num > max_num) {
+                    max_num = num
+                    max_link = $1
+                }
             }
         }
-    }
-    END { if (max_num != "") print max_link; else print "No valid links found"; }')
+        END { if (max_num != "") print max_link; else print "No valid links found"; }')
 
-    if [ "$link" == "No valid links found" ]; then
-        log_error "No valid ChromeOS links found for $code_name"
-        exit 1
+        if [ "$link" == "No valid links found" ]; then
+            log_error "No valid ChromeOS links found for $code_name"
+            log_info "Try using --recovery-url or --recovery-file options"
+            exit 1
+        fi
+
+        log_info "Downloading from: $link"
+        aria2c --console-log-level=warn --summary-interval=1 -x 16 -o chromeos.zip "$link"
+        unzip -o chromeos.zip -d chromeos
+        rm -f chromeos.zip
     fi
-
-    log_info "Downloading from: $link"
-    cd "$BUILD_DIR"
-    aria2c --console-log-level=warn --summary-interval=1 -x 16 -o chromeos.zip "$link"
-    unzip -o chromeos.zip -d chromeos
-    rm -f chromeos.zip
     
     log_success "ChromeOS downloaded and extracted"
 }
@@ -271,6 +403,10 @@ apply_modules() {
     # Parse modules list
     if [[ "$MODULES" == "all" ]]; then
         MODULES="android-apps,tablet-ui,stylus-support,gesture-nav,rotation-manager,performance-boost"
+        # Add hardware-specific optimizations based on codename
+        if [[ "$CODENAME" == "rammus" ]]; then
+            MODULES="$MODULES,rammus-optimizations"
+        fi
     fi
     
     IFS=',' read -ra MODULE_ARRAY <<< "$MODULES"
@@ -305,6 +441,12 @@ apply_modules() {
                 ;;
             "performance-boost")
                 apply_performance_optimizations
+                ;;
+            "rammus-optimizations")
+                if [[ -f "$MODULES_DIR/rammus-optimizations.sh" ]]; then
+                    source "$MODULES_DIR/rammus-optimizations.sh"
+                    apply_rammus_optimizations "$BUILD_DIR"
+                fi
                 ;;
             *)
                 log_warning "Unknown module: $module"

@@ -9,13 +9,14 @@ Script to build generic ChromeOS image for amd64 devices with Google Play Store 
 
 ## 📱 Tablet-Optimized ChromeOS Build (`tablet-build.sh`) - **NEW!**
 Advanced tablet-optimized ChromeOS build system with:
-- **Samus Integration**: Optimized for 3rd gen Intel processors and older
+- **Hardware Presets**: Optimized configurations for Samus, Rammus, and more
+- **Custom Recovery Support**: Use any ChromeOS recovery image URL or file
 - **Touch-Friendly UI**: Enhanced interface for tablet use
 - **Stylus Support**: Advanced pen input with pressure sensitivity
 - **Gesture Navigation**: Multi-touch gesture controls
 - **Modular System**: Choose specific features to include
 - **Auto Rotation**: Intelligent screen rotation management
-- **Performance Optimizations**: Tablet-specific performance tuning
+- **Performance Optimizations**: Hardware-specific performance tuning
 
 The generic ChromeOS flex do not support Google Play Store for running Android apps. These scripts will build a generic ChromeOS image with Google Play Store support for amd64 devices.
 
@@ -77,14 +78,20 @@ You will need debian based linux distro to run the script. You can use Ubuntu in
    ```
 3. Run the tablet build script with options:
    ```shell
+   # Quick Rammus build with preset recovery image
+   ./build-rammus-tablet.sh
+   
    # Basic tablet build with Samus optimization
-   ./tablet-build.sh
+   ./tablet-build.sh --preset samus
+   
+   # Rammus build with preset configuration
+   ./tablet-build.sh --preset rammus --modules all
+   
+   # Custom recovery image build
+   ./tablet-build.sh --recovery-url "https://dl.google.com/.../recovery.bin.zip" --modules all
    
    # Full-featured tablet build with all modules
    ./tablet-build.sh --codename samus --tablet-mode --modules all
-   
-   # Custom build with specific features
-   ./tablet-build.sh --codename samus --modules android-apps,tablet-ui,stylus-support
    ```
 4. Once the build is complete, the image will be available at `tablet-build/chromeos/chromeos-tablet-*.img`.
 5. Use a tool like [Balena Etcher](https://www.balena.io/etcher/) to flash the image to a USB drive.

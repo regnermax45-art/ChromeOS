@@ -9,7 +9,21 @@ on:
           ChromeOS codename for tablet build. Samus is optimized for 3rd gen Intel and older processors.
         required: true
         default: 'samus'
-        options: [samus, leona, shyvana, jinlon, voxel, gumboz]
+        options: [samus, leona, shyvana, jinlon, voxel, gumboz, rammus]
+      
+      use_preset:
+        type: boolean
+        description: 'Use preset configuration for the selected codename'
+        required: false
+        default: true
+      
+      recovery_url:
+        type: string
+        description: |
+          Custom recovery image URL (optional). 
+          Example: https://dl.google.com/dl/edgedl/chromeos/recovery/chromeos_16433.41.0_rammus_recovery_stable-channel_RammusMPKeys-v8.bin.zip
+        required: false
+        default: ''
       
       tablet_features:
         type: choice
@@ -97,6 +111,8 @@ jobs:
           echo "BUILD_CODENAME=${{ inputs.codename }}" >> $GITHUB_ENV
           echo "STYLUS_ENABLED=${{ inputs.enable_stylus }}" >> $GITHUB_ENV
           echo "PERFORMANCE_MODE=${{ inputs.performance_mode }}" >> $GITHUB_ENV
+          echo "USE_PRESET=${{ inputs.use_preset }}" >> $GITHUB_ENV
+          echo "RECOVERY_URL=${{ inputs.recovery_url }}" >> $GITHUB_ENV
 
       - name: Display build configuration
         run: |
@@ -114,7 +130,19 @@ jobs:
           chmod +x tablet-build.sh
           
           # Build command based on configuration
-          BUILD_CMD="./tablet-build.sh --codename $BUILD_CODENAME --tablet-mode --rotation --gestures"
+          BUILD_CMD="./tablet-build.sh --tablet-mode --rotation --gestures"
+          
+          # Add preset if enabled
+          if [ "$USE_PRESET" = "true" ]; then
+            BUILD_CMD="$BUILD_CMD --preset $BUILD_CODENAME"
+          else
+            BUILD_CMD="$BUILD_CMD --codename $BUILD_CODENAME"
+          fi
+          
+          # Add custom recovery URL if provided
+          if [ "$RECOVERY_URL" != "" ]; then
+            BUILD_CMD="$BUILD_CMD --recovery-url \"$RECOVERY_URL\""
+          fi
           
           # Add modules
           if [ "$TABLET_MODULES" != "" ]; then
@@ -286,4 +314,3 @@ jobs:
           echo ""
           echo "🎉 ChromeOS Tablet build completed successfully!"
           echo "📦 Download the artifacts to get your tablet-optimized ChromeOS image."
-
