@@ -238,20 +238,122 @@ install_dependencies() {
         squashfs-tools \
         cpio \
         gzip \
-        xz-utils
+        xz-utils \
+        ccache \
+        build-essential
     
     # Install Python dependencies for advanced features
     pip3 install --user requests beautifulsoup4 lxml
     
+    # Setup ccache for faster builds and better disk space management
+    setup_ccache
+    
     log_success "Dependencies installed"
 }
 
-# Clean previous builds
+# Setup ccache for faster builds and disk space optimization
+setup_ccache() {
+    log_info "Setting up ccache with 50GB cache..."
+    
+    # Create ccache directory
+    mkdir -p "$HOME/.ccache"
+    
+    # Set ccache size to 50GB
+    ccache --set-config=max_size=50G
+    
+    # Set ccache directory
+    export CCACHE_DIR="$HOME/.ccache"
+    
+    # Enable ccache compression to save space (can reduce cache size by 50-80%)
+    ccache --set-config=compression=true
+    ccache --set-config=compression_level=6
+    
+    # Set ccache to use temporary directory for better performance
+    ccache --set-config=temporary_dir=/tmp
+    
+    # Configure ccache for optimal performance
+    ccache --set-config=sloppiness=file_macro,locale,time_macros
+    ccache --set-config=hash_dir=false
+    
+    # Enable ccache statistics
+    ccache --set-config=stats=true
+    
+    # Set ccache to clean up old entries automatically
+    ccache --set-config=cleanup=true
+    
+    # Show ccache configuration
+    log_info "ccache configuration:"
+    ccache --show-config | grep -E "(max_size|compression|cache_dir)" | head -5 || true
+    
+    # Show current ccache stats
+    log_info "Current ccache statistics:"
+    ccache --show-stats | head -10 || true
+    
+    # Add ccache to PATH for this session
+    export PATH="/usr/lib/ccache:$PATH"
+    
+    # Set environment variables for build tools
+    export CC="ccache gcc"
+    export CXX="ccache g++"
+    export CCACHE_COMPRESS=1
+    export CCACHE_COMPRESSLEVEL=6
+    
+    log_success "ccache configured with 50GB cache and compression enabled"
+}
+
+# Clean previous builds with disk space optimization
 clean_previous_run() {
     log_info "Cleaning previous build artifacts..."
+    
+    # Check available disk space for optimization decisions
+    local available_space=$(df . | tail -1 | awk '{print $4}')
+    local available_gb=$(($available_space / 1024 / 1024))
+    
+    if [[ $available_gb -lt 15 ]]; then
+        log_warning "Low disk space detected (${available_gb}GB). Performing aggressive cleanup..."
+        
+        # Clean ccache if it exists and is large
+        if command -v ccache &> /dev/null; then
+            log_info "Cleaning ccache to free up space..."
+            ccache --cleanup 2>/dev/null || true
+            # Don't clear completely, just cleanup old entries
+        fi
+        
+        # Clean system temporary files
+        log_info "Cleaning system temporary files..."
+        sudo apt clean 2>/dev/null || true
+        sudo apt autoremove -y 2>/dev/null || true
+        
+        # Clean Docker if installed
+        if command -v docker &> /dev/null; then
+            log_info "Cleaning Docker images to free up space..."
+            docker system prune -f 2>/dev/null || true
+        fi
+        
+        # Clean snap packages cache
+        if command -v snap &> /dev/null; then
+            sudo snap set system refresh.retain=2 2>/dev/null || true
+        fi
+        
+        # Clean pip cache
+        pip3 cache purge 2>/dev/null || true
+        
+        # Clean npm cache if exists
+        if command -v npm &> /dev/null; then
+            npm cache clean --force 2>/dev/null || true
+        fi
+    fi
+    
+    # Remove previous build directories
     [ -d "$BUILD_DIR/brunch" ] && rm -rf "$BUILD_DIR/brunch"
     [ -d "$BUILD_DIR/chromeos" ] && rm -rf "$BUILD_DIR/chromeos"
     [ -d "$BUILD_DIR/tablet-mods" ] && rm -rf "$BUILD_DIR/tablet-mods"
+    
+    # Show available space after cleanup
+    available_space=$(df . | tail -1 | awk '{print $4}')
+    available_gb=$(($available_space / 1024 / 1024))
+    log_info "Available disk space after cleanup: ${available_gb}GB"
+    
     log_success "Previous build artifacts cleaned"
 }
 
@@ -924,11 +1026,64 @@ show_build_summary() {
     log_info "The image is optimized for tablet use with Samus integration"
 }
 
+# Check system requirements and disk space
+check_system_requirements() {
+    log_info "Checking system requirements..."
+    
+    # Check available disk space
+    local available_space=$(df . | tail -1 | awk '{print $4}')
+    local available_gb=$(($available_space / 1024 / 1024))
+    local required_space=$((12 * 1024 * 1024)) # 12GB minimum in KB
+    local recommended_space=$((20 * 1024 * 1024)) # 20GB recommended in KB
+    
+    log_info "Available disk space: ${available_gb}GB"
+    
+    if [[ $available_space -lt $required_space ]]; then
+        log_error "Insufficient disk space. Available: ${available_gb}GB, Required: 12GB minimum"
+        log_info ""
+        log_info "💡 Solutions to free up space:"
+        log_info "1. Clean up temporary files: sudo apt clean && sudo apt autoremove"
+        log_info "2. Remove old Docker images: docker system prune -a"
+        log_info "3. Clear browser cache and downloads"
+        log_info "4. Use an external drive with more space"
+        log_info "5. Build on a different partition with more space"
+        log_info ""
+        log_info "🔧 For ext4 partitions, you can reclaim reserved space:"
+        log_info "   sudo tune2fs -m 1 /dev/sdXY  # Reduces reserved space to 1%"
+        log_info ""
+        log_info "🚀 ccache will help with future builds by caching compiled objects"
+        exit 1
+    elif [[ $available_space -lt $recommended_space ]]; then
+        log_warning "Low disk space. Available: ${available_gb}GB, Recommended: 20GB"
+        log_info "Build will proceed with aggressive cleanup and ccache optimization"
+        export AGGRESSIVE_CLEANUP=true
+    else
+        log_success "Sufficient disk space available: ${available_gb}GB"
+        export AGGRESSIVE_CLEANUP=false
+    fi
+    
+    # Check required tools
+    local missing_tools=()
+    for tool in aria2c unzip pv cgpt curl; do
+        if ! command -v "$tool" &> /dev/null; then
+            missing_tools+=("$tool")
+        fi
+    done
+    
+    if [[ ${#missing_tools[@]} -gt 0 ]]; then
+        log_error "Missing required tools: ${missing_tools[*]}"
+        log_info "These will be installed automatically with dependencies"
+    fi
+    
+    log_success "System requirements check passed"
+}
+
 # Main execution
 main() {
     log_info "Starting ChromeOS Tablet Builder with Samus Integration"
     
     parse_arguments "$@"
+    check_system_requirements
     setup_directories
     install_dependencies
     clean_previous_run

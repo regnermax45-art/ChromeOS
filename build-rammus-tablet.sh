@@ -44,6 +44,7 @@ echo "  • Recovery: Preset ChromeOS 16433.41.0"
 echo "  • Features: All tablet optimizations"
 echo "  • Modules: Android apps, Tablet UI, Stylus support, Gestures, Performance boost"
 echo "  • Hardware: Intel UHD Graphics 615, Realtek ALC5682 audio"
+echo "  • ccache: 50GB cache for faster builds and disk space optimization"
 echo ""
 
 # Ask for confirmation
@@ -91,4 +92,3 @@ else
     log_info "Check the build logs above for error details"
     exit $BUILD_EXIT_CODE
 fi
-
