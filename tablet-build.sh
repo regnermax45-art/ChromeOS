@@ -279,7 +279,7 @@ setup_ccache() {
     
     # Configure ccache for optimal performance using environment variables
     export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
-    export CCACHE_HASHDIR=false
+    export CCACHE_NOHASHDIR=true
     
     # All configuration via environment variables for maximum compatibility
     
