@@ -1,0 +1,289 @@
+name: Build ChromeOS Tablet with Samus Integration
+
+on:
+  workflow_dispatch:
+    inputs:
+      codename:
+        type: choice
+        description: |
+          ChromeOS codename for tablet build. Samus is optimized for 3rd gen Intel and older processors.
+        required: true
+        default: 'samus'
+        options: [samus, leona, shyvana, jinlon, voxel, gumboz]
+      
+      tablet_features:
+        type: choice
+        description: 'Tablet feature set to include'
+        required: true
+        default: 'full'
+        options: 
+          - 'basic'
+          - 'standard' 
+          - 'full'
+          - 'custom'
+      
+      modules:
+        type: string
+        description: |
+          Comma-separated list of modules (for custom builds).
+          Available: android-apps, tablet-ui, stylus-support, gesture-nav, rotation-manager, performance-boost
+          Use 'all' for all modules.
+        required: false
+        default: 'all'
+      
+      enable_stylus:
+        type: boolean
+        description: 'Enable advanced stylus and pen support'
+        required: false
+        default: true
+      
+      performance_mode:
+        type: choice
+        description: 'Performance optimization level'
+        required: false
+        default: 'balanced'
+        options: ['battery', 'balanced', 'performance']
+
+jobs:
+  build-tablet:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Delete old workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 7
+          keep_minimum_runs: 3
+
+      - name: Set up build environment
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            pv cgpt tar unzip aria2 curl jq \
+            python3 python3-pip \
+            qemu-utils parted e2fsprogs dosfstools \
+            squashfs-tools cpio gzip xz-utils
+          
+          # Install Python dependencies
+          pip3 install --user requests beautifulsoup4 lxml
+
+      - name: Prepare tablet build configuration
+        run: |
+          # Determine modules based on feature set
+          case "${{ inputs.tablet_features }}" in
+            "basic")
+              MODULES="tablet-ui,performance-boost"
+              ;;
+            "standard")
+              MODULES="android-apps,tablet-ui,gesture-nav,performance-boost"
+              ;;
+            "full")
+              MODULES="all"
+              ;;
+            "custom")
+              MODULES="${{ inputs.modules }}"
+              ;;
+          esac
+          
+          echo "TABLET_MODULES=$MODULES" >> $GITHUB_ENV
+          echo "BUILD_CODENAME=${{ inputs.codename }}" >> $GITHUB_ENV
+          echo "STYLUS_ENABLED=${{ inputs.enable_stylus }}" >> $GITHUB_ENV
+          echo "PERFORMANCE_MODE=${{ inputs.performance_mode }}" >> $GITHUB_ENV
+
+      - name: Display build configuration
+        run: |
+          echo "🚀 ChromeOS Tablet Build Configuration"
+          echo "======================================"
+          echo "Codename: $BUILD_CODENAME"
+          echo "Feature Set: ${{ inputs.tablet_features }}"
+          echo "Modules: $TABLET_MODULES"
+          echo "Stylus Support: $STYLUS_ENABLED"
+          echo "Performance Mode: $PERFORMANCE_MODE"
+          echo "======================================"
+
+      - name: Build ChromeOS Tablet Image
+        run: |
+          chmod +x tablet-build.sh
+          
+          # Build command based on configuration
+          BUILD_CMD="./tablet-build.sh --codename $BUILD_CODENAME --tablet-mode --rotation --gestures"
+          
+          # Add modules
+          if [ "$TABLET_MODULES" != "" ]; then
+            BUILD_CMD="$BUILD_CMD --modules $TABLET_MODULES"
+          fi
+          
+          # Add stylus support if enabled
+          if [ "$STYLUS_ENABLED" = "true" ] && [[ "$TABLET_MODULES" != *"stylus-support"* ]]; then
+            if [ "$TABLET_MODULES" = "" ]; then
+              BUILD_CMD="$BUILD_CMD --modules stylus-support"
+            else
+              BUILD_CMD="$BUILD_CMD,stylus-support"
+            fi
+          fi
+          
+          # Set output filename
+          OUTPUT_NAME="chromeos-tablet-$BUILD_CODENAME-$(date +%Y%m%d)"
+          BUILD_CMD="$BUILD_CMD --output $OUTPUT_NAME.img"
+          
+          echo "Executing: $BUILD_CMD"
+          eval $BUILD_CMD
+
+      - name: Verify build output
+        run: |
+          cd tablet-build/chromeos || exit 1
+          
+          # Check if image was created
+          if [ ! -f *.img ]; then
+            echo "❌ Build failed: No image file found"
+            exit 1
+          fi
+          
+          IMAGE_FILE=$(ls *.img | head -1)
+          IMAGE_SIZE=$(du -h "$IMAGE_FILE" | cut -f1)
+          
+          echo "✅ Build successful!"
+          echo "Image: $IMAGE_FILE"
+          echo "Size: $IMAGE_SIZE"
+          
+          # Verify checksum exists
+          if [ -f "$IMAGE_FILE.sha256" ]; then
+            echo "✅ Checksum file created"
+            cat "$IMAGE_FILE.sha256"
+          fi
+
+      - name: Create build summary
+        run: |
+          cd tablet-build/chromeos || exit 1
+          IMAGE_FILE=$(ls *.img | head -1)
+          IMAGE_SIZE=$(du -h "$IMAGE_FILE" | cut -f1)
+          
+          cat > build-summary.txt << EOF
+          ChromeOS Tablet Build Summary
+          =============================
+          
+          Build Date: $(date)
+          Codename: $BUILD_CODENAME
+          Feature Set: ${{ inputs.tablet_features }}
+          Modules: $TABLET_MODULES
+          Stylus Support: $STYLUS_ENABLED
+          Performance Mode: $PERFORMANCE_MODE
+          
+          Output:
+          - Image: $IMAGE_FILE
+          - Size: $IMAGE_SIZE
+          - Checksum: $IMAGE_FILE.sha256
+          
+          Features Included:
+          - Tablet-optimized UI
+          - Touch-friendly interface
+          - Screen rotation support
+          - Gesture navigation
+          - Android app support
+          - Samus hardware optimization
+          $([ "$STYLUS_ENABLED" = "true" ] && echo "- Advanced stylus support")
+          
+          Installation:
+          1. Download the image file
+          2. Use Balena Etcher or similar tool to flash to USB drive
+          3. Boot from USB drive on compatible hardware
+          
+          Hardware Compatibility:
+          - Optimized for Samus (3rd gen Intel and older)
+          - Touchscreen devices recommended
+          - Stylus/pen input supported
+          EOF
+
+      - name: Upload tablet image
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromeos-tablet-${{ inputs.codename }}-${{ inputs.tablet_features }}
+          path: |
+            tablet-build/chromeos/*.img
+            tablet-build/chromeos/*.sha256
+            tablet-build/chromeos/build-summary.txt
+          retention-days: 30
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ inputs.codename }}-${{ github.run_number }}
+          path: |
+            tablet-build/tablet-mods/
+            tablet-build/*.log
+          retention-days: 7
+
+  test-build:
+    needs: build-tablet
+    runs-on: ubuntu-latest
+    if: success()
+    
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: chromeos-tablet-${{ inputs.codename }}-${{ inputs.tablet_features }}
+          path: ./test-artifacts
+
+      - name: Verify image integrity
+        run: |
+          cd test-artifacts
+          
+          # Check if image file exists
+          if [ ! -f *.img ]; then
+            echo "❌ No image file found in artifacts"
+            exit 1
+          fi
+          
+          IMAGE_FILE=$(ls *.img | head -1)
+          
+          # Verify checksum
+          if [ -f "$IMAGE_FILE.sha256" ]; then
+            echo "🔍 Verifying checksum..."
+            sha256sum -c "$IMAGE_FILE.sha256"
+            if [ $? -eq 0 ]; then
+              echo "✅ Checksum verification passed"
+            else
+              echo "❌ Checksum verification failed"
+              exit 1
+            fi
+          fi
+          
+          # Check image size (should be reasonable)
+          IMAGE_SIZE_BYTES=$(stat -c%s "$IMAGE_FILE")
+          MIN_SIZE=$((1024*1024*1024))  # 1GB minimum
+          MAX_SIZE=$((16*1024*1024*1024))  # 16GB maximum
+          
+          if [ $IMAGE_SIZE_BYTES -lt $MIN_SIZE ]; then
+            echo "❌ Image too small: $(du -h "$IMAGE_FILE" | cut -f1)"
+            exit 1
+          elif [ $IMAGE_SIZE_BYTES -gt $MAX_SIZE ]; then
+            echo "❌ Image too large: $(du -h "$IMAGE_FILE" | cut -f1)"
+            exit 1
+          else
+            echo "✅ Image size acceptable: $(du -h "$IMAGE_FILE" | cut -f1)"
+          fi
+          
+          echo "✅ All tests passed!"
+
+      - name: Display final summary
+        run: |
+          cd test-artifacts
+          if [ -f build-summary.txt ]; then
+            echo "📋 Build Summary:"
+            cat build-summary.txt
+          fi
+          
+          echo ""
+          echo "🎉 ChromeOS Tablet build completed successfully!"
+          echo "📦 Download the artifacts to get your tablet-optimized ChromeOS image."
+
