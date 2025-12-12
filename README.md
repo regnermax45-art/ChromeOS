@@ -1,10 +1,25 @@
 # ChromeOS Build Script
 
+🚀 **Enhanced ChromeOS build system with tablet optimization and modular features**
+
+This repository provides two powerful build systems:
+
+## 🖥️ Standard ChromeOS Build (`build.sh`)
 Script to build generic ChromeOS image for amd64 devices with Google Play Store support.
 
-The generic ChromeOS flex do not support Google Play Store for running Android apps. This script will build a generic ChromeOS image with Google Play Store support for amd64 devices.
+## 📱 Tablet-Optimized ChromeOS Build (`tablet-build.sh`) - **NEW!**
+Advanced tablet-optimized ChromeOS build system with:
+- **Samus Integration**: Optimized for 3rd gen Intel processors and older
+- **Touch-Friendly UI**: Enhanced interface for tablet use
+- **Stylus Support**: Advanced pen input with pressure sensitivity
+- **Gesture Navigation**: Multi-touch gesture controls
+- **Modular System**: Choose specific features to include
+- **Auto Rotation**: Intelligent screen rotation management
+- **Performance Optimizations**: Tablet-specific performance tuning
 
-The script will download latest stable recovery image from https://cros.tech/ for the given codename and latest brunch (https://github.com/sebanc/brunch) release. It will then extract the recovery image and build a generic ChromeOS image for amd64 devices.
+The generic ChromeOS flex do not support Google Play Store for running Android apps. These scripts will build a generic ChromeOS image with Google Play Store support for amd64 devices.
+
+Both scripts download the latest stable recovery image from https://cros.tech/ for the given codename and latest brunch (https://github.com/sebanc/brunch) release. They then extract the recovery image and build a generic ChromeOS image for amd64 devices.
 
 ## Inputs
 
@@ -32,6 +47,8 @@ Codename for ChromeOS build. Choose one of the following options based on your p
 
 You will need debian based linux distro to run the script. You can use Ubuntu in WSL on Windows.
 
+### Standard ChromeOS Build
+
 1. Clone this repository.
    ```shell
    git clone https://github.com/rabilrbl/ChromeOS.git
@@ -50,6 +67,29 @@ You will need debian based linux distro to run the script. You can use Ubuntu in
     ```
 5. Once the build is complete, the image will be available at `chromeos/chromeos.img`.
 6. Use a tool like [Balena Etcher](https://www.balena.io/etcher/) to flash the image to a USB drive.
+
+### Tablet-Optimized ChromeOS Build 🆕
+
+1. Follow steps 1-2 above to clone and enter the repository.
+2. Give execute permission to the tablet build script.
+   ```shell
+   chmod +x tablet-build.sh
+   ```
+3. Run the tablet build script with options:
+   ```shell
+   # Basic tablet build with Samus optimization
+   ./tablet-build.sh
+   
+   # Full-featured tablet build with all modules
+   ./tablet-build.sh --codename samus --tablet-mode --modules all
+   
+   # Custom build with specific features
+   ./tablet-build.sh --codename samus --modules android-apps,tablet-ui,stylus-support
+   ```
+4. Once the build is complete, the image will be available at `tablet-build/chromeos/chromeos-tablet-*.img`.
+5. Use a tool like [Balena Etcher](https://www.balena.io/etcher/) to flash the image to a USB drive.
+
+For detailed tablet build documentation, see [README-TABLET.md](README-TABLET.md).
 
 ## GitHub Actions Usage
 
