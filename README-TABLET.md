@@ -35,6 +35,58 @@ This enhanced build system creates tablet-optimized ChromeOS images with advance
 
 ## 🚀 Quick Start
 
+### 🐧 Linux Server Setup
+
+#### Prerequisites
+```bash
+# Update system
+sudo apt update && sudo apt upgrade -y
+
+# Install required packages
+sudo apt install -y build-essential git curl wget unzip python3 python3-pip
+
+# Install ccache for faster builds
+sudo apt install -y ccache
+
+# Optional: Install Docker for additional cleanup capabilities
+sudo apt install -y docker.io
+sudo usermod -aG docker $USER
+```
+
+#### Clone and Setup
+```bash
+# Clone the repository
+git clone https://github.com/regnermax45-art/ChromeOS.git
+cd ChromeOS
+
+# Make scripts executable
+chmod +x tablet-build.sh build-rammus-tablet.sh
+
+# Check system requirements (will auto-cleanup and optimize space)
+./tablet-build.sh --help
+```
+
+#### Running on Linux Server
+```bash
+# Quick Rammus build (recommended for most users)
+./build-rammus-tablet.sh
+
+# Advanced build with custom options
+./tablet-build.sh --preset rammus --output-dir /path/to/output
+
+# Build with maximum optimization
+./tablet-build.sh --preset samus --enable-all-modules
+```
+
+#### Server-Specific Tips
+- **Disk Space**: The build requires ~15-20GB. The script automatically:
+  - Frees ext4 reserved space (5% of partition)
+  - Cleans system caches (apt, docker, pip, npm)
+  - Uses 50GB ccache for faster rebuilds
+- **Memory**: Minimum 4GB RAM recommended, 8GB+ for optimal performance
+- **Network**: Stable internet connection for downloading ChromeOS images (~1.6GB)
+- **Permissions**: Some operations may require sudo (script will prompt when needed)
+
 ### Basic Usage
 ```bash
 # Make the script executable
@@ -263,6 +315,53 @@ After successful build, you'll find:
 
 ## 🔍 Troubleshooting
 
+### Linux Server Specific Issues
+
+**Permission denied errors**
+```bash
+# Ensure scripts are executable
+chmod +x tablet-build.sh build-rammus-tablet.sh
+
+# If sudo is required for certain operations, the script will prompt
+# Make sure your user has sudo privileges
+sudo usermod -aG sudo $USER
+```
+
+**Network/Download issues on servers**
+```bash
+# Test internet connectivity
+curl -I https://dl.google.com/dl/edgedl/chromeos/recovery/
+
+# If behind a proxy, configure it
+export http_proxy=http://proxy:port
+export https_proxy=http://proxy:port
+
+# For corporate networks, you may need to install certificates
+sudo apt install ca-certificates
+```
+
+**Headless server considerations**
+```bash
+# The build works on headless servers (no GUI required)
+# All operations are command-line based
+
+# Monitor build progress with:
+tail -f build.log  # If logging to file
+
+# Or run with verbose output:
+./build-rammus-tablet.sh 2>&1 | tee build.log
+```
+
+**Docker permission issues**
+```bash
+# Add user to docker group (logout/login required)
+sudo usermod -aG docker $USER
+newgrp docker  # Or logout and login
+
+# Test docker access
+docker run hello-world
+```
+
 ### Common Issues
 
 **Build fails with dependency errors**
@@ -275,21 +374,38 @@ sudo apt upgrade
 
 **Insufficient disk space**
 ```bash
-# Check available space (need ~12GB minimum, 20GB recommended)
+# Check available space (need ~15-20GB)
 df -h
 
-# The build system now includes automatic cleanup and ccache optimization
-# But you can manually clean if needed:
+# The build system automatically:
+# - Frees ext4 reserved space (5% of partition)
+# - Cleans system caches (apt, docker, pip, npm)
+# - Uses 50GB ccache for faster rebuilds
+# - Removes downloaded archives after extraction
+
+# Manual cleanup if needed:
 sudo apt clean && sudo apt autoremove -y
 docker system prune -a  # If Docker is installed
 
-# For ext4 partitions, reclaim reserved space (5% by default)
+# For ext4 partitions, reclaim reserved space (done automatically)
 sudo tune2fs -m 1 /dev/sdXY  # Reduces reserved space to 1%
 
 # ccache benefits:
 # - First build: Creates 50GB cache for future builds
 # - Subsequent builds: 70%+ faster due to cached compilation
 # - Compressed cache: Stores more data in less space
+```
+
+**ccache not working (still showing 5GB)**
+```bash
+# The build system now forces ccache to 50GB using multiple methods:
+# - Config file: ~/.ccache/ccache.conf with max_size = 50.0G
+# - Environment variables: CCACHE_MAXSIZE=50G
+# - Direct commands: ccache -M 50G
+
+# Verify ccache configuration:
+ccache --show-config | grep max_size
+# Should show: max_size = 50.0G (not 5.0 GiB)
 ```
 
 **Module not found errors**
