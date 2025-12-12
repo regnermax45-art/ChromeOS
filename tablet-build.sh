@@ -365,6 +365,40 @@ clean_previous_run() {
     available_gb=$(($available_space / 1024 / 1024))
     log_info "Available disk space after cleanup: ${available_gb}GB"
     
+    # Free ext4 reserved space if needed (can free up 5% of partition)
+    log_info "Attempting to free ext4 reserved space..."
+    local device=$(df . | tail -1 | awk '{print $1}')
+    tune2fs -m 1 "$device" 2>/dev/null || true
+    
+    # Aggressive system cleanup for low disk space
+    if [ $available_gb -lt 15 ]; then
+        log_warning "Low disk space detected ($available_gb GB), performing aggressive cleanup..."
+        
+        # Clean package caches
+        apt clean 2>/dev/null || true
+        apt autoremove -y 2>/dev/null || true
+        
+        # Clean Docker if available
+        docker system prune -f 2>/dev/null || true
+        
+        # Clean snap caches
+        snap set system refresh.retain=2 2>/dev/null || true
+        
+        # Clean pip cache
+        pip cache purge 2>/dev/null || true
+        
+        # Clean npm cache
+        npm cache clean --force 2>/dev/null || true
+        
+        # Remove old kernels
+        apt autoremove --purge -y 2>/dev/null || true
+        
+        # Show space after aggressive cleanup
+        available_space=$(df . | tail -1 | awk '{print $4}')
+        available_gb=$(($available_space / 1024 / 1024))
+        log_info "Available space after aggressive cleanup: ${available_gb}GB"
+    fi
+    
     log_success "Previous build artifacts cleaned"
 }
 
@@ -1065,13 +1099,28 @@ show_build_summary() {
 check_system_requirements() {
     log_info "Checking system requirements..."
     
-    # Check available disk space
+    # IMMEDIATE ext4 reserved space recovery (can free up 5% of partition)
+    log_info "Freeing ext4 reserved space..."
+    local device=$(df . | tail -1 | awk '{print $1}')
+    tune2fs -m 1 "$device" 2>/dev/null || true
+    
+    # IMMEDIATE aggressive cleanup
+    log_info "Performing immediate system cleanup..."
+    apt clean 2>/dev/null || true
+    apt autoremove -y 2>/dev/null || true
+    docker system prune -f 2>/dev/null || true
+    rm -rf /tmp/* 2>/dev/null || true
+    rm -rf /var/tmp/* 2>/dev/null || true
+    pip cache purge 2>/dev/null || true
+    npm cache clean --force 2>/dev/null || true
+    
+    # Check available disk space AFTER cleanup
     local available_space=$(df . | tail -1 | awk '{print $4}')
     local available_gb=$(($available_space / 1024 / 1024))
     local required_space=$((12 * 1024 * 1024)) # 12GB minimum in KB
     local recommended_space=$((20 * 1024 * 1024)) # 20GB recommended in KB
     
-    log_info "Available disk space: ${available_gb}GB"
+    log_info "Available disk space after cleanup: ${available_gb}GB"
     
     if [[ $available_space -lt $required_space ]]; then
         log_error "Insufficient disk space. Available: ${available_gb}GB, Required: 12GB minimum"
