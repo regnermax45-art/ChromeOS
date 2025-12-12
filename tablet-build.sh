@@ -289,6 +289,14 @@ setup_ccache() {
     log_info "ccache configuration:"
     ccache --show-config 2>/dev/null | grep -E "(max_size|compression|cache_dir)" | head -5 || ccache -s | head -5
     
+    # Verify ccache size was actually set
+    local actual_size=$(ccache --show-config 2>/dev/null | grep "max_size" | awk '{print $3}' || echo "unknown")
+    if [[ "$actual_size" != *"50"* ]]; then
+        log_warning "ccache size not set to 50GB (showing: $actual_size), trying alternative method..."
+        ccache --set-config=max_size=50G 2>/dev/null || true
+        ccache -M 50G 2>/dev/null || true
+    fi
+    
     # Show current ccache stats
     log_info "Current ccache statistics:"
     ccache --show-stats 2>/dev/null | head -10 || ccache -s | head -10
@@ -989,6 +997,30 @@ build_tablet_image() {
     
     # Remove existing image if it exists
     [ -f "$OUTPUT_FILENAME" ] && rm -f "$OUTPUT_FILENAME"
+    
+    # Aggressive cleanup before final image creation
+    log_info "Performing aggressive cleanup before image creation..."
+    
+    # Remove downloaded archives to free up space
+    rm -f ../chromeos_*.zip 2>/dev/null || true
+    rm -f ../brunch.tar.gz 2>/dev/null || true
+    
+    # Clean system caches
+    apt clean 2>/dev/null || true
+    apt autoremove -y 2>/dev/null || true
+    
+    # Clean ccache if needed
+    if command -v ccache &> /dev/null; then
+        ccache --cleanup 2>/dev/null || ccache -c 2>/dev/null || true
+    fi
+    
+    # Clean temporary files
+    rm -rf /tmp/* 2>/dev/null || true
+    rm -rf /var/tmp/* 2>/dev/null || true
+    
+    # Show available space after cleanup
+    local available_space=$(df -h . | tail -1 | awk '{print $4}')
+    log_info "Available space after cleanup: $available_space"
     
     # Build the image with tablet modifications
     log_info "Creating tablet-optimized ChromeOS image: $OUTPUT_FILENAME"
