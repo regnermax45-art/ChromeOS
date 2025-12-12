@@ -265,14 +265,9 @@ setup_ccache() {
     local ccache_version=$(ccache --version 2>/dev/null | head -1 | grep -o '[0-9]\+\.[0-9]\+' | head -1 || echo "3.0")
     log_info "Detected ccache version: $ccache_version"
     
-    # Set ccache size to 50GB (try different methods for compatibility)
-    if ! ccache --max-size=50G 2>/dev/null; then
-        if ! ccache -M 50G 2>/dev/null; then
-            # Fallback for very old versions
-            export CCACHE_MAXSIZE=50G
-            log_warning "Using environment variable fallback for ccache size"
-        fi
-    fi
+    # Set ccache size to 50GB using the correct environment variable
+    export CCACHE=50G
+    log_info "Set ccache size to 50GB using CCACHE=50G"
     
     # Enable ccache compression to save space (can reduce cache size by 50-80%)
     # Use environment variables for better compatibility
@@ -286,12 +281,7 @@ setup_ccache() {
     export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
     export CCACHE_HASHDIR=false
     
-    # Try to set compression via config if supported, fallback to env vars
-    ccache --set-config=compression=true 2>/dev/null || true
-    ccache --set-config=compression_level=6 2>/dev/null || true
-    ccache --set-config=temporary_dir=/tmp 2>/dev/null || true
-    ccache --set-config=sloppiness=file_macro,locale,time_macros 2>/dev/null || true
-    ccache --set-config=hash_dir=false 2>/dev/null || true
+    # All configuration via environment variables for maximum compatibility
     
     # Show ccache configuration
     log_info "ccache configuration:"
