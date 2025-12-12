@@ -258,36 +258,48 @@ setup_ccache() {
     # Create ccache directory
     mkdir -p "$HOME/.ccache"
     
-    # Set ccache size to 50GB
-    ccache --set-config=max_size=50G
-    
     # Set ccache directory
     export CCACHE_DIR="$HOME/.ccache"
     
+    # Check ccache version and configure accordingly
+    local ccache_version=$(ccache --version 2>/dev/null | head -1 | grep -o '[0-9]\+\.[0-9]\+' | head -1 || echo "3.0")
+    log_info "Detected ccache version: $ccache_version"
+    
+    # Set ccache size to 50GB (try different methods for compatibility)
+    if ! ccache --max-size=50G 2>/dev/null; then
+        if ! ccache -M 50G 2>/dev/null; then
+            # Fallback for very old versions
+            export CCACHE_MAXSIZE=50G
+            log_warning "Using environment variable fallback for ccache size"
+        fi
+    fi
+    
     # Enable ccache compression to save space (can reduce cache size by 50-80%)
-    ccache --set-config=compression=true
-    ccache --set-config=compression_level=6
+    # Use environment variables for better compatibility
+    export CCACHE_COMPRESS=1
+    export CCACHE_COMPRESSLEVEL=6
     
     # Set ccache to use temporary directory for better performance
-    ccache --set-config=temporary_dir=/tmp
+    export CCACHE_TEMPDIR=/tmp
     
-    # Configure ccache for optimal performance
-    ccache --set-config=sloppiness=file_macro,locale,time_macros
-    ccache --set-config=hash_dir=false
+    # Configure ccache for optimal performance using environment variables
+    export CCACHE_SLOPPINESS="file_macro,locale,time_macros"
+    export CCACHE_HASHDIR=false
     
-    # Enable ccache statistics
-    ccache --set-config=stats=true
-    
-    # Set ccache to clean up old entries automatically
-    ccache --set-config=cleanup=true
+    # Try to set compression via config if supported, fallback to env vars
+    ccache --set-config=compression=true 2>/dev/null || true
+    ccache --set-config=compression_level=6 2>/dev/null || true
+    ccache --set-config=temporary_dir=/tmp 2>/dev/null || true
+    ccache --set-config=sloppiness=file_macro,locale,time_macros 2>/dev/null || true
+    ccache --set-config=hash_dir=false 2>/dev/null || true
     
     # Show ccache configuration
     log_info "ccache configuration:"
-    ccache --show-config | grep -E "(max_size|compression|cache_dir)" | head -5 || true
+    ccache --show-config 2>/dev/null | grep -E "(max_size|compression|cache_dir)" | head -5 || ccache -s | head -5
     
     # Show current ccache stats
     log_info "Current ccache statistics:"
-    ccache --show-stats | head -10 || true
+    ccache --show-stats 2>/dev/null | head -10 || ccache -s | head -10
     
     # Add ccache to PATH for this session
     export PATH="/usr/lib/ccache:$PATH"
@@ -295,8 +307,6 @@ setup_ccache() {
     # Set environment variables for build tools
     export CC="ccache gcc"
     export CXX="ccache g++"
-    export CCACHE_COMPRESS=1
-    export CCACHE_COMPRESSLEVEL=6
     
     log_success "ccache configured with 50GB cache and compression enabled"
 }
@@ -315,7 +325,8 @@ clean_previous_run() {
         # Clean ccache if it exists and is large
         if command -v ccache &> /dev/null; then
             log_info "Cleaning ccache to free up space..."
-            ccache --cleanup 2>/dev/null || true
+            # Use compatible ccache cleanup commands
+            ccache --cleanup 2>/dev/null || ccache -c 2>/dev/null || true
             # Don't clear completely, just cleanup old entries
         fi
         
