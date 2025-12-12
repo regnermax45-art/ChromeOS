@@ -266,8 +266,10 @@ setup_ccache() {
     log_info "Detected ccache version: $ccache_version"
     
     # Set ccache size to 50GB using the correct environment variable
+    export CCACHE_MAXSIZE=50G
     export CCACHE=50G
-    log_info "Set ccache size to 50GB using CCACHE=50G"
+    ccache -M 50G 2>/dev/null || true
+    log_info "Set ccache size to 50GB using multiple methods"
     
     # Enable ccache compression to save space (can reduce cache size by 50-80%)
     # Use environment variables for better compatibility
